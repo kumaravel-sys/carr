@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Car Dodge Game</title>
+  <style>
+    :root{--bg:#111;--road:#3a3a3a;--lane:#888}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+    body{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#0b1220,#08101a);color:#eee}
+    .wrap{width:360px;max-width:92vw;margin:24px auto;text-align:center}
+    canvas{display:block;background:var(--road);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+    h1{font-size:18px;margin:10px 0}
+    .hud{display:flex;gap:8px;justify-content:center;margin:8px}
+    .btn{background:#0f1724;border:1px solid rgba(255,255,255,.06);padding:8px 12px;border-radius:8px;color:#fff;cursor:pointer}
+    .small{font-size:13px;color:#bfc6cf}
+    .controls{display:flex;gap:8px;justify-content:center;margin-top:10px}
+    .touchbtn{width:56px;height:40px;background:#1f2937;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;border:0}
+    footer{margin-top:12px;font-size:12px;color:#9aa3ad}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Simple Car Dodge — arrow keys / A,D to move</h1>
+    <div class="hud">
+      <div id="score">Score: 0</div>
+      <div id="speed" class="small">Speed: 1</div>
+    </div>
+    <canvas id="game" width="360" height="640"></canvas>
+    <div class="controls" id="touchControls" style="display:none;margin-top:12px">
+      <button class="touchbtn" id="leftBtn">◀</button>
+      <button class="touchbtn" id="rightBtn">▶</button>
+      <button class="touchbtn" id="restartBtn">⟳</button>
+    </div>
+    <div style="margin-top:10px">
+      <button id="start" class="btn">Start / Pause</button>
+      <button id="reset" class="btn">Reset</button>
+    </div>
+    <footer>Press Space to pause. Collide with other cars = Game Over.</footer>
+  </div>
+
+  <script>
+  /* Simple top-down car dodge game
+     - Single HTML file (no assets)
+     - Use arrow keys or A/D to move
+     - Spawns obstacles that move down
+     - Score increases with time
+  */
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width; const H = canvas.height;
+
+  let running = false;
+  let score = 0;
+  let speed = 2; // base speed multiplier
+  const laneCount = 3;
+  const laneWidth = W / laneCount;
+  const player = {
+    lane: 1,
+    w: laneWidth * 0.6,
+    h: 110,
+    y: H - 140
+  };
+
+  const obstacles = [];
+  let frames = 0;
+
+  function resetGame(){
+    score = 0; speed = 2; player.lane = 1; obstacles.length = 0; frames = 0; running = false; updateHUD(); drawStartScreen();
+  }
+
+  function startStop(){
+    running = !running;
+    if(running) loop();
+    updateHUD();
+  }
+
+  function updateHUD(){
+    document.getElementById('score').textContent = 'Score: ' + Math.floor(score);
+    document.getElementById('speed').textContent = 'Speed: ' + (speed).toFixed(1);
+    document.getElementById('start').textContent = running ? 'Pause' : 'Start';
+  }
+
+  function spawnObstacle(){
+    const lane = Math.floor(Math.random() * laneCount);
+    const w = laneWidth * (0.6 + Math.random()*0.25);
+    const h = 90 + Math.random()*40;
+    const x = lane*laneWidth + (laneWidth - w)/2;
+    obstacles.push({x, y: -h-10, w, h, lane});
+  }
+
+  function drawRoad(){
+    // road background already canvas bg; draw lane separators
+    ctx.fillStyle = '#2b2b2b';
+    ctx.fillRect(0,0,W,H);
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#555';
+    for(let i=1;i<laneCount;i++){
+      const x = i*laneWidth;
+      for(let y= -20; y < H; y += 40){
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y+20); ctx.stroke();
+      }
+    }
+  }
+
+  function drawPlayer(){
+    const cx = player.lane*laneWidth + laneWidth/2;
+    const px = cx - player.w/2;
+    ctx.fillStyle = '#1e90ff';
+    roundRect(ctx, px, player.y, player.w, player.h, 10, true, false);
+    // windows
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    roundRect(ctx, px + player.w*0.15, player.y + 12, player.w*0.7, 32, 6, true, false);
+  }
+
+  function roundRect(ctx, x, y, w, h, r, fill, stroke){
+    if (typeof r === 'undefined') r = 5;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    if(fill) ctx.fill();
+    if(stroke) ctx.stroke();
+  }
+
+  function drawObstacle(o){
+    ctx.save();
+    ctx.fillStyle = '#d64545';
+    roundRect(ctx, o.x, o.y, o.w, o.h, 8, true, false);
+    // simple headlights
+    ctx.fillStyle = 'rgba(255,255,180,0.8)';
+    ctx.fillRect(o.x + o.w*0.12, o.y + o.h - 12, o.w*0.2, 6);
+    ctx.fillRect(o.x + o.w*0.68, o.y + o.h - 12, o.w*0.2, 6);
+    ctx.restore();
+  }
+
+  function rectsCollide(a,b){
+    return !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
+  }
+
+  function loop(){
+    if(!running) return;
+    frames++;
+    // increase difficulty slowly
+    if(frames % 300 === 0) speed += 0.3;
+    if(frames % Math.max(20, 90 - Math.floor(speed*6)) === 0) spawnObstacle();
+
+    // update
+    ctx.clearRect(0,0,W,H);
+    drawRoad();
+
+    // move obstacles
+    for(let i = obstacles.length -1; i >=0; i--){
+      const o = obstacles[i];
+      o.y += speed * (1 + Math.random()*0.15);
+      drawObstacle(o);
+      // collision test
+      const playerRect = {x: player.lane*laneWidth + (laneWidth-player.w)/2, y: player.y, w: player.w, h: player.h};
+      const obsRect = {x: o.x, y: o.y, w: o.w, h: o.h};
+      if(rectsCollide(playerRect, obsRect)){
+        running = false; updateHUD(); drawGameOver(); return;
+      }
+      if(o.y > H + 50) obstacles.splice(i,1);
+    }
+
+    drawPlayer();
+    score += 0.1 * speed;
+    updateHUD();
+
+    requestAnimationFrame(loop);
+  }
+
+  function drawStartScreen(){
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '20px Arial';
+    ctx.fillText('Press Start to play', W/2, H/2 - 10);
+    ctx.font = '14px Arial'; ctx.fillText('Use ← → or A / D to change lanes', W/2, H/2 + 18);
+  }
+
+  function drawGameOver(){
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '28px Arial';
+    ctx.fillText('Game Over', W/2, H/2 - 10);
+    ctx.font = '16px Arial'; ctx.fillText('Score: ' + Math.floor(score), W/2, H/2 + 20);
+  }
+
+  // input
+  window.addEventListener('keydown', e => {
+    if(e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') player.lane = Math.max(0, player.lane - 1);
+    if(e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') player.lane = Math.min(laneCount-1, player.lane + 1);
+    if(e.key === ' ' || e.key === 'Spacebar') { startStop(); }
+    if(e.key === 'r') resetGame();
+  });
+
+  // buttons
+  document.getElementById('start').addEventListener('click', ()=>{ startStop(); if(running) loop(); });
+  document.getElementById('reset').addEventListener('click', ()=>{ resetGame(); });
+
+  // touch support
+  function showTouch(){
+    const tc = document.getElementById('touchControls'); tc.style.display = 'flex';
+    document.getElementById('leftBtn').addEventListener('touchstart', ()=>{ player.lane = Math.max(0, player.lane - 1); });
+    document.getElementById('rightBtn').addEventListener('touchstart', ()=>{ player.lane = Math.min(laneCount-1, player.lane + 1); });
+    document.getElementById('restartBtn').addEventListener('touchstart', ()=>{ resetGame(); });
+  }
+
+  // detect touchscreen
+  if('ontouchstart' in window || navigator.maxTouchPoints > 0){ showTouch(); }
+
+  // initial
+  resetGame();
+  </script>
+</body>
+</html>
